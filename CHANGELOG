@@ -1,0 +1,14 @@
+*****  Wed Sep 9 21:26:59 CEST 2020  *****
+
+Added initial set of C files:
+- multinest.c (main, bridge to Python, function names need to change)
+- random_ns.c (everything is alright in this file I believe)
+- utils.c (LAPACK's extern void dsyevr is not working)
+- kmeans.c (kmeans3 is working)
+
+Solved issue with struct random_ns rand_ns global variable,
+used as extern in kmeans (so far).
+
+I think I got the source/header file structure sorted out.
+
+Some testing is done (not yet in repo), a lot more needs to be tested
