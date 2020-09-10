@@ -37,7 +37,7 @@ void kmeans3(
         *totR,  // Number of points per cluster (k)
         *scrap;  // Indices of starting point for each cluster (k)
     double temp, dist, urv=0.0, d1;
-    int i, j, l, x;
+    int i, j, l, x=0;
     int clstrd=0, flag;
 
     if (k > npt/min_pt + 1)

@@ -13,7 +13,7 @@
 // use RandomNS
 
 /* DSYEVR prototype */
-extern void dsyevr(
+extern void dsyevr_(
     char* jobz, char* range, char* uplo, int* n, double* a,
     int* lda, double* vl, double* vu, int* il, int* iu, double* abstol,
     int* m, double* w, double* z, int* ldz, int* isuppz, double* work,
@@ -322,19 +322,19 @@ void diagonalize(
             lwork = -1;
             liwork = -1;
 
-            //dsyevr(
-            //    "Vectors", "Indices", "Upper", &n, a, &lda,
-            //    &vl, &vu, &il, &iu, &abstol,
-            //    &m,  // Total number of eigenvalues
-            //    diag,  // [w] eigenvalues
-            //    z,     // eigenvectors
-            //    &ldz,  // ldz: leading dimension of z
-            //    isuppz,  // support of eigenvectors in z (nonzero indices)
-            //    &wkopt, // if info=0, required minimal size of lwork
-            //    &lwork,  // dimension of work
-            //    &iwkopt,  // workspace array
-            //    &liwork,  // dimension of iwork
-            //    &ierr);  // info: (0:OK, -i:illegal i-th par, i:internal error)
+            dsyevr_(
+                "Vectors", "Indices", "Upper", &n, a, &lda,
+                &vl, &vu, &il, &iu, &abstol,
+                &m,  // Total number of eigenvalues
+                diag,  // [w] eigenvalues
+                z,     // eigenvectors
+                &ldz,  // ldz: leading dimension of z
+                isuppz,  // support of eigenvectors in z (nonzero indices)
+                &wkopt, // if info=0, required minimal size of lwork
+                &lwork,  // dimension of work
+                &iwkopt,  // workspace array
+                &liwork,  // dimension of iwork
+                &ierr);  // info: (0:OK, -i:illegal i-th par, i:internal error)
 
             lwork = (int)wkopt;
             liwork = iwkopt;
@@ -352,10 +352,10 @@ void diagonalize(
     iwork = (int *)malloc(liwork * sizeof(int));
 
     /* Solve eigenproblem */
-    //dsyevr(
-    //    "Vectors", "Indices", "Upper", &n, a, &lda, &vl, &vu, &il, &iu,
-    //    &abstol, &m, diag, z, &ldz, isuppz, work, &lwork, iwork, &liwork,
-    //    &ierr);
+    dsyevr_(
+        "Vectors", "Indices", "Upper", &n, a, &lda, &vl, &vu, &il, &iu,
+        &abstol, &m, diag, z, &ldz, isuppz, work, &lwork, iwork, &liwork,
+        &ierr);
 
     free(a);
     free(work);

@@ -1,4 +1,4 @@
-# multinest Copyright © 2010 Farhan Feroz & Mike Hobson
+# multinest Copyright (C) 2010 Farhan Feroz & Mike Hobson
 
 import os
 import re

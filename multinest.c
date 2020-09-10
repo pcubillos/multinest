@@ -15,7 +15,6 @@
 #include "utils.h"
 #include "kmeans.h"
 
-
 struct random_ns rand_ns;
 
 

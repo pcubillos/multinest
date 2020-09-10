@@ -12,3 +12,12 @@ used as extern in kmeans (so far).
 I think I got the source/header file structure sorted out.
 
 Some testing is done (not yet in repo), a lot more needs to be tested
+
+
+*****  Thu Sep 10 21:25:37 CEST 2020  *****
+
+Fixed issue with LAPACK's dsyevr() functions, I should append an
+underscore at the end of the function name.
+utils.c is now working fine.
+
+https://askubuntu.com/questions/408077
