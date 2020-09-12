@@ -21,3 +21,8 @@ underscore at the end of the function name.
 utils.c is now working fine.
 
 https://askubuntu.com/questions/408077
+
+
+*****  Sat Sep 12 11:23:47 CEST 2020  *****
+
+Moved C source and header files into src_c folder.

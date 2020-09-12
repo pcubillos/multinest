@@ -11,8 +11,7 @@ from numpy import get_include
 
 __version__ = '0.0.0'
 
-#srcdir = 'src_c/'          # C-code source folder
-srcdir = './'          # C-code source folder
+srcdir = 'src_c/'          # C-code source folder
 incdir = f'{srcdir}include/'  # Include folder with header files
 
 cfiles = os.listdir(srcdir)
@@ -55,7 +54,7 @@ setup(name = "multinest",
       version = __version__,
       author = "Patricio Cubillos",
       author_email = "patricio.cubillos@oeaw.ac.at",
-      #url = "https://github.com/pcubillos/multinest",
+      url = "https://github.com/pcubillos/multinest",
       packages = setuptools.find_packages(),
       #install_requires = ['numpy>=1.8.1',
       #                    'scipy>=0.13.3',
