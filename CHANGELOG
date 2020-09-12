@@ -26,3 +26,8 @@ https://askubuntu.com/questions/408077
 *****  Sat Sep 12 11:23:47 CEST 2020  *****
 
 Moved C source and header files into src_c folder.
+
+*****
+
+Added xmeans.c. At least anderson_darling() function is working.
+

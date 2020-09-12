@@ -34,6 +34,15 @@ double sum1d(double *arr, int n){
 }
 
 
+double product(double *array, int n){
+    double prod=1.0;
+    int i;
+    for (i=0; i<n; i++)
+        prod *= array[i];
+    return prod;
+}
+
+
 void swap(double *arr, int i, int j){
     double tmp=arr[i];
     arr[i] = arr[j];

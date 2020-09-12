@@ -22,7 +22,7 @@ cfiles = [
     'random_ns.c',
     'utils.c',
     'kmeans.c',
-#    'xmeans.c',
+    'xmeans.c',
     'multinest.c',
     ]
 

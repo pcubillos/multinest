@@ -11,6 +11,7 @@ void dsyevr(
     int *lwork, int *iwork, int *liwork, int *info);
 
 double sum1d(double *arr, int n);
+double product(double *array, int n);
 void swap(double *arr, int i, int j);
 void quicksort(double *arr, int n);
 double gammln(double xx);

@@ -14,18 +14,55 @@
 #include "random_ns.h"
 #include "utils.h"
 #include "kmeans.h"
+#include "xmeans.h"
 
+int n_dim;
 struct random_ns rand_ns;
 
 
 PyDoc_STRVAR(test__doc__, "import multinest");
+
+static PyObject *py_anderson_darling(PyObject *self, PyObject *args){
+    PyArrayObject *points, *dmeans;
+    double **pt, *delta_means;
+    int i, j, ndim, npt;
+    double anderson;
+
+    // Load inputs:
+    if (!PyArg_ParseTuple(args, "OO", &points, &dmeans))
+        return NULL;
+
+    ndim = (int)PyArray_DIM(points, 0);
+    npt = (int)PyArray_DIM(points, 1);
+
+    delta_means = (double *)malloc(ndim * sizeof(double));
+    pt = (double **)malloc(ndim * sizeof(double *));
+    pt[0] = (double *)malloc(ndim*npt * sizeof(double));
+    for (i=1; i<ndim; i++)
+        pt[i] = pt[0] + npt*i;
+
+    for (i=0; i<ndim; i++){
+        delta_means[i] = INDd(dmeans,i);
+        for (j=0; j<npt; j++)
+            pt[i][j] = IND2d(points,i,j);
+    }
+
+    anderson = anderson_darling(npt, n_dim, pt, delta_means);
+
+    free(delta_means);
+    free(pt[0]);
+    free(pt);
+
+    return Py_BuildValue("f", anderson);
+}
+
 
 //static PyObject *test_kmeans_anderson(PyObject *self, PyObject *args){
 //    PyArrayObject *points, *clusters, *kmean;
 //    double **pt, **means;
 //    int i, j, k, ndim, npt;
 //    int min_pt;
-//    int anderson;
+//    double anderson;
 //    int *cluster;
 //    //static struct random_ns rand_ns;
 //    npy_intp
@@ -62,14 +99,14 @@ PyDoc_STRVAR(test__doc__, "import multinest");
 //            pt[i][j] = IND2d(points,i,j);
 //
 //    init_random_ns(&rand_ns, 1, -2);
-//    printf("FLAG 0: RANDOM\n");
 //
+//    // KMEANS
 //    kmeans3(k, pt, npt, ndim, means, cluster, min_pt);
-//    printf("FLAG 1: KMEANS\n");
 //
+//    // ANDERSON DARLING
 //    for (i=0; i<ndim; i++)
 //        means[0][i] = means[0][i] - means[1][i];
-//    anderson = anderson_darling(npt, n_dim, pt, means[0], 0.0001);
+//    anderson = anderson_darling(npt, n_dim, pt, means[0]);
 //
 //    for (j=0; j<npt; j++)
 //        INDi(clusters,j) = cluster[j];
@@ -83,8 +120,9 @@ PyDoc_STRVAR(test__doc__, "import multinest");
 //    free(pt);
 //    free(cluster);
 //
-//    return Py_BuildValue("[N,N]", clusters, kmean);
+//    return Py_BuildValue("[N,N,f]", clusters, kmean, anderson);
 //}
+
 
 static PyObject *test_diagonalize(PyObject *self, PyObject *args){
     PyArrayObject *matrix, *diagonal;
@@ -234,10 +272,11 @@ PyDoc_STRVAR(multinest__doc__, "utility functions for C multinest.");
 
 /* A list of all the methods defined by this module. */
 static PyMethodDef multinest_methods[] = {
+    {"anderson_darling", py_anderson_darling, METH_VARARGS, test__doc__},
     {"test_diagonalize", test_diagonalize, METH_VARARGS, test__doc__},
     {"test_random", test_random, METH_VARARGS, test__doc__},
     {"test_quicksort", test_quicksort, METH_VARARGS, test__doc__},
-    {"test_kmeans", test_kmeans, METH_VARARGS, test__doc__},
+    {"kmeans", test_kmeans, METH_VARARGS, test__doc__},
     {NULL, NULL, 0, NULL}    /* sentinel */
 };
 
