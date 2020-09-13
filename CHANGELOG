@@ -31,3 +31,8 @@ Moved C source and header files into src_c folder.
 
 Added xmeans.c. At least anderson_darling() function is working.
 
+
+*****  Sun Sep 13 18:20:02 CEST 2020  *****
+
+Implemented gmean() clustering function in xmeans.c.
+

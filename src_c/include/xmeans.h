@@ -12,11 +12,13 @@ void normal_cluster_probability(
 
 double anderson_darling(int npt, int ndim, double **pt, double *delta_mean);
 
-void Gmeans(double **pt, int npt, int naux, double **auxa, int min_pt);
+void do_gmeans(
+    double **points, int npt, int ndim, int *nClstr, int *pt_per_cluster,
+    int naux, double **auxa, int min_pt, int max_clusters);
 
-void doGmeans(
-    double **points, int npt, int np, int nClstr, int *pt_per_cluster,
-    int naux, double **auxa, int min_pt, int maxC);
+void gmeans(
+    double **pt, int npt, int ndim, int naux, double **auxa, int min_pt,
+    int max_clusters);
 
 void gauss_prop(
     int npt, int ndim, double **pt, double *weights, double *norm_weights,

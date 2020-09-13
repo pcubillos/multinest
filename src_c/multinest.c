@@ -57,71 +57,69 @@ static PyObject *py_anderson_darling(PyObject *self, PyObject *args){
 }
 
 
-//static PyObject *test_kmeans_anderson(PyObject *self, PyObject *args){
-//    PyArrayObject *points, *clusters, *kmean;
-//    double **pt, **means;
-//    int i, j, k, ndim, npt;
-//    int min_pt;
-//    double anderson;
-//    int *cluster;
-//    //static struct random_ns rand_ns;
-//    npy_intp
-//        mean_size[2],
-//        cluster_size[1];
-//
-//    // Load inputs:
-//    if (!PyArg_ParseTuple(args, "Oi", &points, &min_pt))
-//        return NULL;
-//
-//    k = 2;
-//    n_dim = ndim = (int)PyArray_DIM(points, 0);
-//    npt = (int)PyArray_DIM(points, 1);
-//    mean_size[0] = k;
-//    mean_size[1] = ndim;
-//    kmean = (PyArrayObject *) PyArray_SimpleNew(2, mean_size, NPY_DOUBLE);
-//    cluster_size[0] = npt;
-//    clusters = (PyArrayObject *) PyArray_SimpleNew(1, cluster_size, NPY_INT);
-//
-//    pt = (double **)malloc(ndim * sizeof(double *));
-//    pt[0] = (double *)malloc(ndim*npt * sizeof(double));
-//    for (i=1; i<ndim; i++)
-//        pt[i] = pt[0] + npt*i;
-//
-//    means = (double **)malloc(k * sizeof(double *));
-//    means[0] = (double *)malloc(k*ndim * sizeof(double));
-//    for (i=1; i<k; i++)
-//        means[i] = means[0] + ndim*i;
-//
-//    cluster = (int *)malloc(npt * sizeof(int));
-//
-//    for (i=0; i<ndim; i++)
-//        for (j=0; j<npt; j++)
-//            pt[i][j] = IND2d(points,i,j);
-//
-//    init_random_ns(&rand_ns, 1, -2);
-//
-//    // KMEANS
-//    kmeans3(k, pt, npt, ndim, means, cluster, min_pt);
-//
-//    // ANDERSON DARLING
-//    for (i=0; i<ndim; i++)
-//        means[0][i] = means[0][i] - means[1][i];
-//    anderson = anderson_darling(npt, n_dim, pt, means[0]);
-//
-//    for (j=0; j<npt; j++)
-//        INDi(clusters,j) = cluster[j];
-//    for (i=0; i<k; i++)
-//        for (j=0; j<ndim; j++)
-//            IND2d(kmean,i,j) = means[i][j];
-//
-//    free(means[0]);
-//    free(means);
-//    free(pt[0]);
-//    free(pt);
-//    free(cluster);
-//
-//    return Py_BuildValue("[N,N,f]", clusters, kmean, anderson);
-//}
+static PyObject *py_gmeans(PyObject *self, PyObject *args){
+    PyArrayObject *points, *aux_data, *pt_per_cluster;
+    double **pt, **aux;
+    int *ppc;
+    int i, j, ndim, npt, naux;
+    int min_pt, max_clusters, nclusters=0;
+    npy_intp size[1];
+
+    // Load inputs:
+    if (!PyArg_ParseTuple(args, "OOii",
+            &points, &aux_data, &min_pt, &max_clusters))
+        return NULL;
+
+    ndim = (int)PyArray_DIM(points, 0);
+    npt = (int)PyArray_DIM(points, 1);
+    naux = (int)PyArray_DIM(aux_data, 0);
+
+    pt = (double **)malloc(ndim * sizeof(double *));
+    pt[0] = (double *)malloc(ndim*npt * sizeof(double));
+    for (i=1; i<ndim; i++)
+        pt[i] = pt[0] + npt*i;
+
+    aux = (double **)malloc(naux * sizeof(double *));
+    aux[0] = (double *)malloc(naux*npt * sizeof(double));
+    for (i=1; i<naux; i++)
+        aux[i] = aux[0] + npt*i;
+
+    ppc = (int *)malloc(max_clusters * sizeof(int));
+
+    for (j=0; j<npt; j++){
+        for (i=0; i<ndim; i++)
+            pt[i][j] = IND2d(points,i,j);
+        for (i=0; i<naux; i++)
+            aux[i][j] = IND2d(aux_data,i,j);
+    }
+
+    init_random_ns(&rand_ns, 1, -1);
+
+    // GMEANS
+    do_gmeans(pt, npt, ndim, &nclusters, ppc, naux, aux, min_pt, max_clusters);
+    kill_random_ns(&rand_ns);
+
+    for (j=0; j<npt; j++){
+        for (i=0; i<ndim; i++)
+            IND2d(points,i,j) = pt[i][j];
+        for (i=0; i<naux; i++)
+            IND2d(aux_data,i,j) = aux[i][j];
+    }
+
+    size[0] = nclusters;
+    pt_per_cluster = (PyArrayObject *) PyArray_SimpleNew(1, size, NPY_INT);
+    for (j=0; j<nclusters; j++){
+        INDi(pt_per_cluster,j) = ppc[j];
+    }
+
+    free(aux[0]);
+    free(aux);
+    free(pt[0]);
+    free(pt);
+    free(ppc);
+
+    return Py_BuildValue("N", pt_per_cluster);
+}
 
 
 static PyObject *test_diagonalize(PyObject *self, PyObject *args){
@@ -277,6 +275,7 @@ static PyMethodDef multinest_methods[] = {
     {"test_random", test_random, METH_VARARGS, test__doc__},
     {"test_quicksort", test_quicksort, METH_VARARGS, test__doc__},
     {"kmeans", test_kmeans, METH_VARARGS, test__doc__},
+    {"gmeans", py_gmeans, METH_VARARGS, test__doc__},
     {NULL, NULL, 0, NULL}    /* sentinel */
 };
 

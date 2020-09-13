@@ -15,26 +15,228 @@
 #include "kmeans.h"
 #include "xmeans.h"
 
-extern int n_dim;
+
 int num_clusters,
     nclusters,
-    pt_clustered,
-    maxClstr; // total clusters found yet & total pts in clstrs yet
+    pt_clustered;
 double **p, **xclsMean, **xclsEval, **aux;
 double  *xclsVol, *xclsKfac, *xclsEff, *xclsDetcov;
 double ***xclsInvCov, ***xclsTMat, ***xclsCovmat, ***xclsEvec;
 
 /* Gmeans global variables */
 double
-    ***pt_k,  // points in clusters (2, n_dim, npt)
-    ***aux_k,  // loglike, to change order only (2,naux,npt)
-    **mean_k,  // (2,n_dim)
-    *delta_mean;  //difference between the means of the two clusters (n_dim)
+    **pt_k,  // points in clusters (ndim, npt)
+    **aux_k,  // loglike, to change order only (naux,npt)
+    **mean_k;  // k-cluster means (2, ndim)
 
 int *xclsPos,
     *ppc;  // points per cluster
 
 extern struct random_ns rand_ns;
+
+
+void do_gmeans(
+    double **points, // IN/OUT: Points, output array is sorted by cluster
+    int npt,  // Number of points
+    int ndim,  // Dimensionality of points
+    int *nClstr, // OUT: Total clusters found
+    int *pt_per_cluster,  // OUT: points per cluster
+    int naux,  // Dimensionality of auxa
+    double **auxa,  // Auxiliary-data array for each point
+    int min_pt,  // Minimum number of points per cluster
+    int max_clusters){  // Maximum number of clusters
+
+    int i, j;
+    nclusters = 1;  // Current number of clusters
+    num_clusters = 0;  // Number of clusters created
+    pt_clustered = 0;  // Number of points clustered
+
+    if (npt < 2*min_pt){
+        *nClstr = 1;
+        pt_per_cluster[0] = npt;
+        return;
+    }
+
+    /* Allocate global variables */
+    p = (double **)malloc(ndim * sizeof(double *));
+    p[0] = (double *)malloc(ndim*npt * sizeof(double));
+    for (i=1; i<ndim; i++)
+        p[i] = p[0] + npt*i;
+
+    aux = (double **)malloc(naux * sizeof(double *));
+    aux[0] = (double *)malloc(naux*npt * sizeof(double));
+    for (i=1; i<naux; i++)
+        aux[i] = aux[0] + npt*i;
+
+    xclsPos = (int *)calloc(max_clusters, sizeof(int));
+    ppc = (int *)malloc(max_clusters * sizeof(int));
+    for (i=0; i<max_clusters; i++)
+        ppc[i] = -1;
+
+    // Points in clusters (ndim, npt)
+    pt_k = (double **)malloc(ndim * sizeof(double *));
+    pt_k[0] = (double *)malloc(ndim*npt * sizeof(double));
+    for (i=1; i<ndim; i++){
+        pt_k[i] = pt_k[0] + npt*i;
+    }
+
+    // Points in clusters (2, ndim, npt)
+    //pt_k = (double ***)malloc(2 * sizeof(double **));
+    //pt_k[0] = (double **)malloc(2*ndim * sizeof(double *));
+    //pt_k[0][0] = (double *)malloc(2*ndim*npt * sizeof(double));
+    //for (i=0; i<2; i++){
+    //    if (i != 0)
+    //        pt_k[i] = pt_k[0] + ndim*i;
+    //    for (j=0; j<npt; j++)
+    //        if (i != 0 || j != 0)
+    //            pt_k[i][j] = pt_k[0][0] + npt*ndim*i + npt*j;
+    //}
+
+    // loglike, to change order only (naux,npt)
+    aux_k = (double **)malloc(naux * sizeof(double *));
+    aux_k[0] = (double *)malloc(naux*npt * sizeof(double));
+    for (i=1; i<naux; i++){
+        aux_k[i] = aux_k[0] + npt*i;
+    }
+
+    // Mean of each new kmean cluster (2,ndim)
+    mean_k = (double **)malloc(2 * sizeof(double *));
+    mean_k[0] = (double *)malloc(2*ndim * sizeof(double));
+    mean_k[1] = mean_k[0] + ndim;
+
+    gmeans(points, npt, ndim, naux, auxa, min_pt, max_clusters);
+
+    j = 0;
+    for (i=0; i<num_clusters; i++)
+        if (ppc[xclsPos[i]] >= 0){
+            pt_per_cluster[j] = ppc[xclsPos[i]];
+            j += 1;
+        }
+    *nClstr = j;
+
+    for (j=0; j<npt; j++){
+        for (i=0; i<ndim; i++)
+            points[i][j] = p[i][j];
+        for (i=0; i<naux; i++)
+            auxa[i][j] = aux[i][j];
+    }
+
+    free(p[0]);
+    free(p);
+    free(aux[0]);
+    free(aux);
+    free(xclsPos);
+    free(ppc);
+    free(pt_k[0]);
+    free(pt_k);
+    free(aux_k[0]);
+    free(aux_k);
+    free(mean_k[0]);
+    free(mean_k);
+}
+
+
+void gmeans(
+    double **pt, // points
+    int npt,  // Number of points
+    int ndim,  // Points dimensionality
+    int naux, // auxa dimensionality
+    double **auxa, // Auxilliary points
+    int min_pt,
+    int max_clusters){
+
+    int *cluster;  // Cluster array having cluster num of each pt (npt)
+    int i, j, ip, i1, k;
+    int attempt_cluster = 1;  // attempt to cluster
+    int npt_k[2] = {0, 0};  // no. of points in the clusters
+    int npt_cluster=0;
+    double ad=0.0;
+
+    cluster = (int *)malloc(npt * sizeof(int));
+
+    // Don't cluster if cluster has less than 2*(min_pt-1)+1 points
+    // since it result in clusters having less than min_pt points
+    if (npt < 2*min_pt || nclusters == max_clusters)
+        attempt_cluster = 0;
+
+    if (attempt_cluster == 1){
+        // Breakup the points in 2 clusters
+        i1 = 2;
+        kmeans3(i1, pt, npt, ndim, mean_k, cluster, min_pt);
+        // Get number of points in each cluster:
+        for (i=0; i<npt; i++)
+            npt_k[cluster[i]] += 1;
+
+        // Don't cluster if either of the clusters has fewer than
+        // min_pt points since that might be noise
+        if (npt_k[0] < min_pt || npt_k[1] < min_pt){
+            attempt_cluster = 0;
+        }
+    }
+    // Calculate the means of the two clusters & their difference
+    if (attempt_cluster == 1){
+        // Recycle mean_k[0] as delta_mean:
+        for (i=0; i<ndim; i++)
+            mean_k[0][i] = mean_k[0][i] - mean_k[1][i];
+        // Inference at alpha=0.0001
+        //if (anderson_darling(npt, ndim, pt, mean_k[0]) < 1.8692)
+        ad = anderson_darling(npt, ndim, pt, mean_k[0]);
+        if (ad < 1.8692)
+            attempt_cluster = 0;
+    }
+
+    if (attempt_cluster == 1){
+        nclusters += 1;
+        // Separate clusters and try further kmeans clustering:
+        npt_cluster = npt_k[0];
+        npt_k[0] = npt_k[1] = 0;
+        for (j=0; j<npt; j++){
+            k = cluster[j];
+            for (i=0; i<ndim; i++)
+                pt_k[i][npt_cluster*k + npt_k[k]] = pt[i][j];
+            for (i=0; i<naux; i++)
+                aux_k[i][npt_cluster*k + npt_k[k]] = auxa[i][j];
+            npt_k[k] += 1;
+        }
+        free(cluster);
+        for (j=0; j<npt_k[0]; j++){
+            for (i=0; i<ndim; i++)
+                pt[i][j] = pt_k[i][j];
+            for (i=0; i<naux; i++)
+                auxa[i][j] = aux_k[i][j];
+        }
+        gmeans(pt, npt_k[0], ndim, naux, auxa, min_pt, max_clusters);
+        for (j=0; j<npt_k[1]; j++){
+            for (i=0; i<ndim; i++)
+                pt[i][j] = pt_k[i][npt_cluster+j];
+            for (i=0; i<naux; i++)
+                auxa[i][j] = aux_k[i][npt_cluster+j];
+        }
+        gmeans(pt, npt_k[1], ndim, naux, auxa, min_pt, max_clusters);
+        return;
+    }
+    free(cluster);
+
+    /* Do not attempt further clustering */
+    for (j=0; j<npt; j++){
+        for (i=0; i<ndim; i++)
+            p[i][pt_clustered+j] = pt[i][j];
+        for (i=0; i<naux; i++)
+            aux[i][pt_clustered+j] = auxa[i][j];
+    }
+    ip = bin_search(ppc, num_clusters, npt);
+    for (i=num_clusters; i>ip; i--)
+        ppc[i] = ppc[i-1];
+    ppc[ip] = npt;
+
+    for (i=0; i<num_clusters; i++)
+        if (xclsPos[i] >= ip)
+            xclsPos[i] += 1;
+    xclsPos[num_clusters] = ip;
+
+    pt_clustered += npt;
+    num_clusters += 1;
+}
 
 
 void rescale(int ndim, int npt, double **pt){
@@ -215,207 +417,6 @@ double anderson_darling(
 }
 
 
-void Gmeans(
-    double **pt, // points
-    int npt,
-    int naux, //num of points
-    double **auxa, // Auxilliary points
-    int min_pt){
-
-    /* These should be global variables, and allocated in dog_means */
-    //double
-    //    ***pt_k,  // points in clusters (2, n_dim, npt)
-    //    ***aux_k;  // loglike, to change order only (2,naux,npt)
-    // double *mean;  // (n_dim)
-
-    int *cluster;  // Cluster array having cluster num of each pt (npt)
-    int i, j, ip, i1, k;
-    double alpha=0.0001;  // Confidence level for Anderson-Darlind test
-    int attempt_cluster = 1;  // attempt to cluster
-    int npt_k[2] = {0, 0};  // no. of points in the clusters
-
-    cluster = (int *)malloc(npt * sizeof(int));
-
-    // // Calculate the mean:
-    // for (i=0; i<n_dim; i++){
-    //     mean[i] = 0.0;
-    //     for (j=0; j<npt; j++)
-    //         mean[i] += pt[i][j];
-    //     mean[i] /= npt;
-    // }
-
-    // Don't cluster if cluster has less than 2*(min_pt-1)+1 points
-    // since it result in clusters having less than min_pt points
-    if (npt < 2*min_pt || nclusters == maxClstr)
-        attempt_cluster = 0;
-
-    if (attempt_cluster == 1){
-        // Breakup the points in 2 clusters
-        i1 = 2;
-        //for (i=0; i<n_dim; i++)
-        //    mean_k[0][i] = mean[i];
-        kmeans3(i1, pt, npt, n_dim, mean_k, cluster, min_pt);
-        // Get number of points in each cluster:
-        for (i=0; i<npt; i++)
-            npt_k[cluster[i]] += 1;
-
-        // Don't cluster if either of the clusters has fewer than
-        // min_pt points since that might be noise
-        if (npt_k[0] < min_pt || npt_k[1] < min_pt){
-            attempt_cluster = 0;
-        }
-    }
-
-    // Calculate the means of the two clusters & their difference
-    if (attempt_cluster == 1){
-        for (i=0; i<n_dim; i++)
-            delta_mean[i] = mean_k[0][i] - mean_k[1][i];
-        // Inference at alpha=0.0001
-        if (anderson_darling(npt, n_dim, pt, delta_mean) < 1.8692)
-            attempt_cluster = 0;
-    }
-
-    if (attempt_cluster == 1){
-        nclusters += 1;
-        // Separate clusters and try further kmeans clustering:
-        npt_k[0] = npt_k[1] = 0;
-        for (i=0; i<npt; i++){
-            k = cluster[i];
-            npt_k[k] += 1;
-            for (j=0; j<n_dim; j++)
-                pt_k[k][j][npt_k[k]] = pt[j][i];
-            for (j=0; j<naux; j++)
-                aux_k[k][j][npt_k[k]] = auxa[j][i];
-        }
-        free(cluster);
-        //Gmeans(pt_k(1,:,:npt_k[0]),npt_k[0],naux,aux_k(1,:,:npt_k[0]),min_pt)
-        //Gmeans(pt_k(2,:,:npt_k[1]),npt_k[1],naux,aux_k(2,:,:npt_k[1]),min_pt)
-        Gmeans(pt_k[0], npt_k[0], naux, aux_k[0], min_pt);
-        Gmeans(pt_k[1], npt_k[1], naux, aux_k[1], min_pt);
-        return;
-    }
-    free(cluster);
-
-    /* Do not attempt further clustering */
-    for (j=0; j<npt; j++){
-        for (i=0; i<n_dim; i++)
-            p[i][pt_clustered+j] = pt[i][j];
-        for (i=0; i<naux; i++)
-            aux[i][pt_clustered+j] = auxa[i][j];
-    }
-    // pt_per_cluster
-    ip = bin_search(ppc, num_clusters, npt);
-    for (i=num_clusters; i>ip; i--)
-        ppc[i] = ppc[i-1];
-    ppc[ip] = npt;
-
-    for (i=0; i<num_clusters; i++)
-        if (xclsPos[i] >= ip)
-            xclsPos[i] += 1;
-    xclsPos[num_clusters] = ip;
-    pt_clustered += npt;
-    num_clusters += 1;
-}
-
-
-void doGmeans(
-    double **points,
-    int npt,
-    int np,  // Dimensionality
-    int nClstr, // total clusters found
-    int *pt_per_cluster,
-    int naux,
-    double **auxa,
-    int min_pt,
-    int maxC){
-
-    int i, j;
-    nclusters = 1;  // Current number of clusters
-    num_clusters = 0;  // Number of clusters created
-    pt_clustered = 0;  // Number of points clustered
-
-    if (npt < 2*min_pt){
-        nClstr = 1;
-        pt_per_cluster[0] = npt;
-        return;
-    }
-
-    n_dim = np;
-    maxClstr = maxC;
-
-    /* Allocate global variables */
-    p = (double **)malloc(n_dim * sizeof(double *));
-    p[0] = (double *)malloc(n_dim*npt * sizeof(double));
-    for (i=1; i<n_dim; i++)
-        p[i] = p[0] + npt*i;
-
-    aux = (double **)malloc(naux * sizeof(double *));
-    aux[0] = (double *)malloc(naux*npt * sizeof(double));
-    for (i=1; i<naux; i++)
-        aux[i] = aux[0] + npt*i;
-
-    xclsPos = (int *)calloc(maxC, sizeof(int));
-    ppc = (int *)calloc(maxC, sizeof(int));
-
-    // Points in clusters (2, n_dim, npt)
-    pt_k = (double ***)malloc(2 * sizeof(double **));
-    pt_k[0] = (double **)malloc(2*n_dim * sizeof(double *));
-    pt_k[0][0] = (double *)malloc(2*n_dim*npt * sizeof(double));
-    for (i=1; i<2; i++){
-        pt_k[i] = pt_k[0] + n_dim*i;
-        for (j=1; j<npt; j++)
-            pt_k[i][j] = pt_k[0][0] + n_dim*i + npt*j;
-    }
-
-    // loglike, to change order only (2,naux,npt)
-    //***aux_k;
-    aux_k = (double ***)malloc(2 * sizeof(double **));
-    aux_k[0] = (double **)malloc(2*naux * sizeof(double *));
-    aux_k[0][0] = (double *)malloc(2*naux*npt * sizeof(double));
-    for (i=1; i<2; i++){
-        aux_k[i] = aux_k[0] + naux*i;
-        for (j=1; j<npt; j++)
-            aux_k[i][j] = aux_k[0][0] + naux*i + npt*j;
-    }
-
-    // Mean of each new kmean cluster (2,n_dim)
-    mean_k = (double **)malloc(2 * sizeof(double *));
-    mean_k[0] = (double *)malloc(2*n_dim * sizeof(double));
-    mean_k[1] = mean_k[0] + n_dim*i;
-
-    // Difference between the means of the two clusters (n_dim)
-    delta_mean = (double *)malloc(n_dim * sizeof(double));
-
-    Gmeans(points, npt, naux, auxa, min_pt);
-
-    j = 0;
-    for (i=0; i<num_clusters; i++)
-        if (ppc[xclsPos[i]] > 0){
-            j += 1;
-            pt_per_cluster[j] = ppc[xclsPos[i]];
-        }
-    nClstr = j;
-
-    for (j=0; j<npt; j++){
-        for (i=0; i<n_dim; i++)
-            points[i][j] = p[i][j];
-        for (i=0; i<naux; i++)
-            auxa[i][j] = aux[i][j];
-    }
-
-    free(p[0]);
-    free(p);
-    free(aux[0]);
-    free(aux);
-    free(xclsPos);
-    free(ppc);
-    free(delta_mean);
-    //free(mean[0]);
-    //free(mean);
-}
-
-
-
 void gauss_prop(
     int npt,  // Number of points
     int ndim,  // Dimensionality
@@ -502,7 +503,7 @@ void GaussMixExpMaxLike(
 
     int calc_mean=1, set_weight=1;
 
-    n_dim = ndim;
+    //ndim = ndim;
 
     t_norm_weights = (double **)malloc(nclusters * sizeof(double *));
     t_norm_weights[0] = (double *)calloc(nclusters*npt, sizeof(double));
